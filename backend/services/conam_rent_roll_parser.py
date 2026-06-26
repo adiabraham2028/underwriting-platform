@@ -1,4 +1,5 @@
 import io
+import re
 import math
 import logging
 import pandas as pd
@@ -69,6 +70,24 @@ def parse_conam_rent_roll_excel(file_bytes: bytes) -> dict:
         if s in ('', 'nan', 'None'):
             return None
         return s[:10]  # YYYY-MM-DD
+
+    # ── Extract "As Of" date from header rows (rows 0-3) ──────────────────
+    as_of_date = None
+    try:
+        df_head = pd.read_excel(io.BytesIO(file_bytes), header=None, nrows=4)
+        for _, hrow in df_head.iterrows():
+            for cell in hrow:
+                if cell and 'As Of' in str(cell):
+                    # "As Of = 05/30/2026" → parse MM/DD/YYYY
+                    m = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', str(cell))
+                    if m:
+                        month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                        as_of_date = datetime(year, month, day)
+                    break
+            if as_of_date:
+                break
+    except Exception as e:
+        logger.warning(f"Could not extract As Of date: {e}")
 
     # Read with header at row index 4
     df = pd.read_excel(io.BytesIO(file_bytes), header=4)
@@ -211,6 +230,7 @@ def parse_conam_rent_roll_excel(file_bytes: bytes) -> dict:
         'loss_to_lease':                sum(mkt_rents) - sum(rents) if rents and mkt_rents else 0,
         'unit_mix':                     result,
     }
+    summary['as_of_date'] = as_of_date.isoformat() if as_of_date else None
     return _sanitize(summary)
 
 

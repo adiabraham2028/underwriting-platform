@@ -156,6 +156,16 @@ async def export_model(
     om_ext = om_result.scalar_one_or_none()
     om_data = om_ext.extracted_data if om_ext else {}
 
+    # Get T12 period_start from the T12 extraction data
+    t12_result = await db.execute(
+        select(Extraction)
+        .where(Extraction.deal_id == deal_id, Extraction.document_type == "t12")
+        .order_by(Extraction.created_at.desc())
+        .limit(1)
+    )
+    t12_ext = t12_result.scalar_one_or_none()
+    period_start = t12_ext.extracted_data.get('period_start') if t12_ext else None
+
     # Write directly from session items to template
     export_bytes = export_populated_model(
         template_bytes=template_bytes,
@@ -163,6 +173,7 @@ async def export_model(
         rent_roll_data=rr_data,
         om_data=om_data,
         unit_type_mapping=deal.unit_type_mapping,  # cached from rent roll upload
+        period_start=period_start,                 # e.g. "2025-06-01"
     )
 
     # Detect .xlsm via VBA bin presence

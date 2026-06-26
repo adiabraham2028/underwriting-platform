@@ -305,6 +305,31 @@ async def process_document(document_id: uuid.UUID, deal_id: uuid.UUID, user_id: 
                     extracted_result = {'trailing_totals': {}, 'line_items': [], 'months': [],
                                         'month_labels': [], 'confidence_scores': {}}
 
+                # Extract period start from source Excel header rows
+                # e.g. "Period = Jun 2025-May 2026" → period_start = "2025-06-01"
+                if file_format == "excel":
+                    try:
+                        import pandas as _pd
+                        import re as _re
+                        import io as _io
+                        df_head = _pd.read_excel(_io.BytesIO(doc.file_data), header=None, nrows=5)
+                        _month_map = {
+                            'Jan':1,'Feb':2,'Mar':3,'Apr':4,'May':5,'Jun':6,
+                            'Jul':7,'Aug':8,'Sep':9,'Oct':10,'Nov':11,'Dec':12,
+                        }
+                        for _, hrow in df_head.iterrows():
+                            for cell in hrow:
+                                if cell and 'Period' in str(cell):
+                                    m = _re.search(r'(\w{3})\s+(\d{4})', str(cell))
+                                    if m:
+                                        mn = _month_map.get(m.group(1)[:3], 1)
+                                        yr = int(m.group(2))
+                                        extracted_result['period_start'] = f"{yr}-{mn:02d}-01"
+                                        logger.info(f"T12 period start extracted: {extracted_result['period_start']}")
+                                    break
+                    except Exception as _e:
+                        logger.warning(f"Could not extract T12 period start: {_e}")
+
             # ------ OM / other — 1 Claude call each ------
             else:
                 extracted_result = await extract(doc.document_type, text)

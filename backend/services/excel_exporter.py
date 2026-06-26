@@ -126,11 +126,34 @@ def _parse_beds_baths(unit_type: str) -> tuple[float, float]:
     return (0, 0)
 
 
-def _write_t12(ws, session_items: list):
+def _write_t12(ws, session_items: list, period_start: str = None):
     """
     Find the CATEGORY header row in the T12 sheet and write one row per
     session item immediately below it.
+
+    period_start: ISO date string like "2025-06-01". When provided, writes to
+    the template's B16 cell (the period start input that drives all EOMONTH
+    month-header formulas). Also updates the A15 period label.
     """
+    # Write period start date to B16 before touching anything else.
+    # B16 is the key input cell — EOMONTH formulas in C16..M16 cascade from it.
+    if period_start:
+        try:
+            from datetime import datetime as _dt
+            ps = _dt.fromisoformat(period_start)
+            b16 = ws.cell(row=16, column=2)
+            if not str(b16.value or '').startswith('='):
+                b16.value = ps
+            # Also update the period label in A15 if it's plain text
+            a15 = ws.cell(row=15, column=1)
+            if a15.value and not str(a15.value).startswith('='):
+                end_month = (ps.month + 10) % 12 + 1
+                end_year  = ps.year + 1 if ps.month > 2 else ps.year
+                a15.value = (f"Period = {ps.strftime('%b %y')} - "
+                             f"{_dt(end_year, end_month, 1).strftime('%b %y')}")
+        except Exception as e:
+            logger.warning(f"Could not write T12 period start: {e}")
+
     category_row = None
     category_col = None
     for row in ws.iter_rows(max_row=50):
@@ -205,6 +228,20 @@ def _write_rent_roll(ws, rr_data: dict, unit_type_mapping: dict):
     if not unit_mix:
         return 0
 
+    # Write "As Of" date to A3 (row 3, col 1).
+    # The template has a stale hardcoded date here; overwrite with the actual
+    # report date extracted from the source document.
+    as_of_raw = rr_data.get('as_of_date')
+    if as_of_raw:
+        try:
+            from datetime import datetime as _dt
+            as_of = _dt.fromisoformat(as_of_raw) if isinstance(as_of_raw, str) else as_of_raw
+            a3 = ws.cell(row=3, column=1)
+            if not str(a3.value or '').startswith('='):
+                a3.value = as_of
+        except Exception as e:
+            logger.warning(f"Could not write Rent Roll As Of date: {e}")
+
     DATA_START = 31
 
     # Clear existing data rows (A–L), skip formula cells
@@ -278,6 +315,7 @@ def export_populated_model(
     rent_roll_data: dict,          # extracted_data from rent roll extraction
     om_data: dict,                 # extracted_data from OM (may be empty)
     unit_type_mapping: dict = None,  # cached from deal.unit_type_mapping
+    period_start: str = None,      # ISO date "YYYY-MM-DD" for T12 B16 cell
 ) -> bytes:
     """
     Load the .xlsm template, write T12 line items and Rent Roll units
@@ -306,7 +344,7 @@ def export_populated_model(
             break
 
     if t12_sheet and session_items:
-        _write_t12(t12_sheet, session_items)
+        _write_t12(t12_sheet, session_items, period_start=period_start)
 
     if rr_sheet and rent_roll_data.get('unit_mix'):
         # Resolve unit type mapping: use cached, or compute locally
