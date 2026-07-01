@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { dealsApi } from '../api/deals'
+import client from '../api/client'
 import SpreadsheetEditor from '../components/SpreadsheetEditor'
 import FlagsPanel from '../components/FlagsPanel'
 import SnapshotHistory from '../components/SnapshotHistory'
@@ -15,6 +16,8 @@ export default function ModelEditor() {
   const [showFlags, setShowFlags] = useState(true)
   const [selectedSnapshot, setSelectedSnapshot] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [exportingT12, setExportingT12] = useState(false)
+  const [exportingRR, setExportingRR] = useState(false)
 
   const { data: deal } = useQuery({
     queryKey: ['deal', id],
@@ -58,6 +61,46 @@ export default function ModelEditor() {
     }
   }
 
+  const handleExportT12 = async () => {
+    setExportingT12(true)
+    try {
+      const res = await client.get(`/deals/${id}/export/t12`, { responseType: 'blob' })
+      const contentDisposition = res.headers['content-disposition'] || ''
+      const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/)
+      const filename = filenameMatch?.[1] || 'T12.xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'T12 export failed')
+    } finally {
+      setExportingT12(false)
+    }
+  }
+
+  const handleExportRentRoll = async () => {
+    setExportingRR(true)
+    try {
+      const res = await client.get(`/deals/${id}/export/rentroll`, { responseType: 'blob' })
+      const contentDisposition = res.headers['content-disposition'] || ''
+      const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/)
+      const filename = filenameMatch?.[1] || 'RentRoll.xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Rent roll export failed')
+    } finally {
+      setExportingRR(false)
+    }
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-64px)]">
       {/* Toolbar */}
@@ -70,6 +113,22 @@ export default function ModelEditor() {
           <span className="text-sm text-gray-500 ml-2">Model Editor</span>
         </div>
         <SnapshotHistory dealId={id} selected={selectedSnapshot} onSelect={setSelectedSnapshot} />
+        <button
+          onClick={handleExportT12}
+          disabled={exportingT12}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          {exportingT12 ? '…' : 'T12'}
+        </button>
+        <button
+          onClick={handleExportRentRoll}
+          disabled={exportingRR}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          {exportingRR ? '…' : 'Rent Roll'}
+        </button>
         <button
           onClick={handleExport}
           className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50"

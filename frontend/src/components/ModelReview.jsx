@@ -258,6 +258,8 @@ export default function ModelReview({ dealId, flags = [], onFlagResolved }) {
   const [rrData, setRrData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [exportingT12, setExportingT12] = useState(false)
+  const [exportingRR, setExportingRR] = useState(false)
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -302,6 +304,48 @@ export default function ModelReview({ dealId, flags = [], onFlagResolved }) {
     }
   }
 
+  const handleExportT12 = async () => {
+    setExportingT12(true)
+    try {
+      const res = await client.get(`/deals/${dealId}/export/t12`, { responseType: 'blob' })
+      const contentDisposition = res.headers['content-disposition'] || ''
+      const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/)
+      const filename = filenameMatch?.[1] || 'T12.xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('T12 export failed:', e)
+      alert(e.response?.data?.detail || 'T12 export failed.')
+    } finally {
+      setExportingT12(false)
+    }
+  }
+
+  const handleExportRentRoll = async () => {
+    setExportingRR(true)
+    try {
+      const res = await client.get(`/deals/${dealId}/export/rentroll`, { responseType: 'blob' })
+      const contentDisposition = res.headers['content-disposition'] || ''
+      const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/)
+      const filename = filenameMatch?.[1] || 'RentRoll.xlsx'
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Rent roll export failed:', e)
+      alert(e.response?.data?.detail || 'Rent roll export failed.')
+    } finally {
+      setExportingRR(false)
+    }
+  }
+
   const TABS = [
     { id: 't12',      label: 'T12 Classifications' },
     { id: 'rentroll', label: 'Rent Roll' },
@@ -336,13 +380,29 @@ export default function ModelReview({ dealId, flags = [], onFlagResolved }) {
             </button>
           ))}
         </div>
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="flex items-center gap-2 px-4 py-1.5 bg-green-600 text-white text-sm rounded font-medium hover:bg-green-700 disabled:opacity-50"
-        >
-          {exporting ? 'Exporting…' : '↓ Export to Excel'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportT12}
+            disabled={exportingT12}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {exportingT12 ? '…' : '↓ T12'}
+          </button>
+          <button
+            onClick={handleExportRentRoll}
+            disabled={exportingRR}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {exportingRR ? '…' : '↓ Rent Roll'}
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-2 px-4 py-1.5 bg-green-600 text-white text-sm rounded font-medium hover:bg-green-700 disabled:opacity-50"
+          >
+            {exporting ? 'Exporting…' : '↓ Export to Excel'}
+          </button>
+        </div>
       </div>
 
       {/* Tab content */}
